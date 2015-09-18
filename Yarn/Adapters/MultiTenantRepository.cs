@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Security.Principal;
 using Yarn.Extensions;
 using Yarn.Linq.Expressions;
 using Yarn.Specification;
@@ -206,6 +207,75 @@ namespace Yarn.Adapters
         public long OwnerId
         {
             get { return _owner.OwnerId; }
+        }
+
+        public override ILoadService<T> Load<T>()
+        {
+            if (typeof (ITenant).IsAssignableFrom(typeof (T)))
+                return new LoadService<T>(base.Load<T>());
+            return base.Load<T>();
+        }
+
+        private class LoadService<T> : ILoadService<T>
+            where T : class, ITenant
+        {
+            private readonly ILoadService<T> _loadService;
+            private readonly ITenant _owner;
+
+            public LoadService(ILoadService<T> loadService, ITenant owner)
+            {
+                _loadService = loadService;
+                _owner = owner;
+            }
+
+            public IQueryable<T> All()
+            {
+                return _loadService.All().Where(t => t.TenantId == _owner.TenantId);
+            }
+
+            public void Dispose()
+            {
+                _loadService.Dispose();
+            }
+
+            public ILoadService<T> Include<TProperty>(Expression<Func<T, TProperty>> path) where TProperty : class
+            {
+                ILoadService<T> loadService = _loadService.Include(path);
+                if (loadService == _loadService)
+                    return this;
+                return new LoadService<T>(loadService, _owner);
+            }
+
+            public T Update(T entity)
+            {
+                var tenant = entity as ITenant;
+                if (tenant == null || tenant.TenantId == _owner.TenantId)
+                {
+                    return _loadService.Update(entity);
+                }
+
+                throw new InvalidOperationException();
+            }
+
+            public T Find(Expression<Func<T, bool>> criteria)
+            {
+                throw new NotImplementedException();
+            }
+
+            public IEnumerable<T> FindAll(Expression<Func<T, bool>> criteria, int offset = 0, int limit = 0, Sorting<T> orderBy = null)
+            {
+                throw new NotImplementedException();
+            }
+
+            public T Find(ISpecification<T> criteria)
+            {
+                throw new NotImplementedException();
+            }
+
+            public IEnumerable<T> FindAll(ISpecification<T> criteria, int offset = 0, int limit = 0, Sorting<T> orderBy = null)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }
